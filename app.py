@@ -207,3 +207,155 @@ else:
         "You need a positive remaining balance "
         "to start saving toward your goal."
     )
+
+from io import BytesIO
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import matplotlib.pyplot as plt
+
+
+# Generate a printable SmartBudget PDF report
+def generate_pdf():
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # Header
+    pdf.setFillColor(colors.HexColor("#167347"))
+    pdf.setFont("Helvetica-Bold", 22)
+    pdf.drawString(45, height - 55, "SmartBudget")
+
+    pdf.setFillColor(colors.HexColor("#152238"))
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(45, height - 75, "Monthly Personal Finance Report")
+
+    # Financial summary
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(45, height - 115, "Financial Summary")
+
+    pdf.setFont("Helvetica", 11)
+    summary = [
+        ("Monthly Income", f"${income:,.2f}"),
+        ("Total Expenses", f"${total_expenses:,.2f}"),
+        ("Remaining Balance", f"${remaining_balance:,.2f}"),
+        ("Savings Rate", f"{savings_rate:.1f}%")
+    ]
+
+    y = height - 140
+    for label, value in summary:
+        pdf.drawString(50, y, label)
+        pdf.drawRightString(width - 50, y, value)
+        y -= 23
+
+    # Donut chart with percentages inside the slices
+    if total_expenses > 0:
+        chart_data = expense_data[expense_data["Amount"] > 0]
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+
+        wedges, texts, autotexts = ax.pie(
+            chart_data["Amount"],
+            autopct="%1.1f%%",
+            pctdistance=0.78,
+            startangle=90,
+            wedgeprops={
+                "width": 0.45,
+                "edgecolor": "white"
+            },
+            textprops={
+                "fontsize": 10,
+                "weight": "bold",
+                "color": "black"
+            }
+        )
+
+        ax.legend(
+            wedges,
+            chart_data["Category"],
+            loc="center left",
+            bbox_to_anchor=(1, 0.5),
+            fontsize=9
+        )
+
+        ax.set_aspect("equal")
+        fig.tight_layout()
+
+        chart_buffer = BytesIO()
+        fig.savefig(
+            chart_buffer,
+            format="png",
+            dpi=200,
+            bbox_inches="tight",
+            facecolor="white"
+        )
+        plt.close(fig)
+        chart_buffer.seek(0)
+
+        from reportlab.lib.utils import ImageReader
+
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(
+            45, height - 265,
+            "Monthly Spending Breakdown"
+        )
+
+        pdf.drawImage(
+            ImageReader(chart_buffer),
+            45,
+            height - 535,
+            width=520,
+            height=250,
+            preserveAspectRatio=True
+        )
+
+    # Savings goal
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(45, 210, "Savings Goal")
+
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(
+        50, 185,
+        f"Target Savings: ${savings_goal:,.2f}"
+    )
+
+    if remaining_balance > 0:
+        pdf.drawString(
+            50, 165,
+            f"Estimated Time: {months_needed} months"
+        )
+    else:
+        pdf.drawString(
+            50, 165,
+            "No available monthly savings."
+        )
+
+    # Footer
+    pdf.setStrokeColor(colors.lightgrey)
+    pdf.line(45, 75, width - 45, 75)
+
+    pdf.setFont("Helvetica", 9)
+    pdf.setFillColor(colors.grey)
+    pdf.drawCentredString(
+        width / 2,
+        55,
+        "Generated with SmartBudget | Personal Finance Tracker"
+    )
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+# PDF download button
+st.divider()
+st.header("Download Your Financial Report")
+
+pdf_data = generate_pdf()
+
+st.download_button(
+    label="📄 Download Financial Report (PDF)",
+    data=pdf_data,
+    file_name="SmartBudget_Financial_Report.pdf",
+    mime="application/pdf"
+)
